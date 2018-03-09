@@ -1,9 +1,12 @@
 <?php
 
+namespace Illuminate\Tests\Mail;
+
 use Mockery as m;
 use Illuminate\Mail\Message;
+use PHPUnit\Framework\TestCase;
 
-class MailMessageTest extends PHPUnit_Framework_TestCase
+class MailMessageTest extends TestCase
 {
     /**
      * @var \Mockery::mock
@@ -19,7 +22,7 @@ class MailMessageTest extends PHPUnit_Framework_TestCase
     {
         parent::setUp();
 
-        $this->swift = m::mock(Swift_Mime_Message::class);
+        $this->swift = m::mock(\Swift_Mime_Message::class);
         $this->message = new Message($this->swift);
     }
 
@@ -90,14 +93,14 @@ class MailMessageTest extends PHPUnit_Framework_TestCase
 
     public function testGetSwiftMessageMethod()
     {
-        $this->assertInstanceOf(Swift_Mime_Message::class, $this->message->getSwiftMessage());
+        $this->assertInstanceOf(\Swift_Mime_Message::class, $this->message->getSwiftMessage());
     }
 
     public function testBasicAttachment()
     {
-        $swift = m::mock('StdClass');
+        $swift = m::mock('stdClass');
         $message = $this->getMockBuilder('Illuminate\Mail\Message')->setMethods(['createAttachmentFromPath'])->setConstructorArgs([$swift])->getMock();
-        $attachment = m::mock('StdClass');
+        $attachment = m::mock('stdClass');
         $message->expects($this->once())->method('createAttachmentFromPath')->with($this->equalTo('foo.jpg'))->will($this->returnValue($attachment));
         $swift->shouldReceive('attach')->once()->with($attachment);
         $attachment->shouldReceive('setContentType')->once()->with('image/jpeg');
@@ -107,9 +110,9 @@ class MailMessageTest extends PHPUnit_Framework_TestCase
 
     public function testDataAttachment()
     {
-        $swift = m::mock('StdClass');
+        $swift = m::mock('stdClass');
         $message = $this->getMockBuilder('Illuminate\Mail\Message')->setMethods(['createAttachmentFromData'])->setConstructorArgs([$swift])->getMock();
-        $attachment = m::mock('StdClass');
+        $attachment = m::mock('stdClass');
         $message->expects($this->once())->method('createAttachmentFromData')->with($this->equalTo('foo'), $this->equalTo('name'))->will($this->returnValue($attachment));
         $swift->shouldReceive('attach')->once()->with($attachment);
         $attachment->shouldReceive('setContentType')->once()->with('image/jpeg');

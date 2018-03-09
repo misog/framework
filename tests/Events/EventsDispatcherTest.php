@@ -1,9 +1,13 @@
 <?php
 
-use Mockery as m;
-use Illuminate\Events\Dispatcher;
+namespace Illuminate\Tests\Events;
 
-class EventsDispatcherTest extends PHPUnit_Framework_TestCase
+use Mockery as m;
+use PHPUnit\Framework\TestCase;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+
+class EventsDispatcherTest extends TestCase
 {
     public function tearDown()
     {
@@ -21,10 +25,25 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('bar', $_SERVER['__event.test']);
     }
 
+    public function testHaltingEventExecution()
+    {
+        unset($_SERVER['__event.test']);
+        $d = new Dispatcher;
+        $d->listen('foo', function ($foo) {
+            $this->assertTrue(true);
+
+            return 'here';
+        });
+        $d->listen('foo', function ($foo) {
+            throw new Exception('should not be called');
+        });
+        $d->until('foo', ['bar']);
+    }
+
     public function testContainerResolutionOfEventHandlers()
     {
         $d = new Dispatcher($container = m::mock('Illuminate\Container\Container'));
-        $container->shouldReceive('make')->once()->with('FooHandler')->andReturn($handler = m::mock('StdClass'));
+        $container->shouldReceive('make')->once()->with('FooHandler')->andReturn($handler = m::mock('stdClass'));
         $handler->shouldReceive('onFooEvent')->once()->with('foo', 'bar');
         $d->listen('foo', 'FooHandler@onFooEvent');
         $d->fire('foo', ['foo', 'bar']);
@@ -33,7 +52,7 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
     public function testContainerResolutionOfEventHandlersWithDefaultMethods()
     {
         $d = new Dispatcher($container = m::mock('Illuminate\Container\Container'));
-        $container->shouldReceive('make')->once()->with('FooHandler')->andReturn($handler = m::mock('StdClass'));
+        $container->shouldReceive('make')->once()->with('FooHandler')->andReturn($handler = m::mock('stdClass'));
         $handler->shouldReceive('handle')->once()->with('foo', 'bar');
         $d->listen('foo', 'FooHandler');
         $d->fire('foo', ['foo', 'bar']);
@@ -85,6 +104,23 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('wildcard', $_SERVER['__event.test']);
     }
 
+    public function testWildcardListenersCacheFlushing()
+    {
+        unset($_SERVER['__event.test']);
+        $d = new Dispatcher;
+        $d->listen('foo.*', function () {
+            $_SERVER['__event.test'] = 'cached_wildcard';
+        });
+        $d->fire('foo.bar');
+        $this->assertEquals('cached_wildcard', $_SERVER['__event.test']);
+
+        $d->listen('foo.*', function () {
+            $_SERVER['__event.test'] = 'new_wildcard';
+        });
+        $d->fire('foo.bar');
+        $this->assertEquals('new_wildcard', $_SERVER['__event.test']);
+    }
+
     public function testListenersCanBeRemoved()
     {
         unset($_SERVER['__event.test']);
@@ -131,53 +167,37 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($d->hasListeners('foo.*'));
     }
 
-    public function testFiringReturnsCurrentlyFiredEvent()
+    public function testEventPassedFirstToWildcards()
     {
-        unset($_SERVER['__event.test']);
         $d = new Dispatcher;
-        $d->listen('foo', function () use ($d) {
-            $_SERVER['__event.test'] = $d->firing();
-            $d->fire('bar');
+        $d->listen('foo.*', function ($event, $data) {
+            $this->assertEquals('foo.bar', $event);
+            $this->assertEquals(['first', 'second'], $data);
         });
-        $d->listen('bar', function () use ($d) {
-            $_SERVER['__event.test'] = $d->firing();
-        });
-        $d->fire('foo');
+        $d->fire('foo.bar', ['first', 'second']);
 
-        $this->assertEquals('bar', $_SERVER['__event.test']);
+        $d = new Dispatcher;
+        $d->listen('foo.bar', function ($first, $second) {
+            $this->assertEquals('first', $first);
+            $this->assertEquals('second', $second);
+        });
+        $d->fire('foo.bar', ['first', 'second']);
     }
 
     public function testQueuedEventHandlersAreQueued()
     {
         $d = new Dispatcher;
         $queue = m::mock('Illuminate\Contracts\Queue\Queue');
-        $queue->shouldReceive('push')->once()->with('Illuminate\Events\CallQueuedHandler@call', [
-            'class' => 'TestDispatcherQueuedHandler',
-            'method' => 'someMethod',
-            'data' => serialize(['foo', 'bar']),
-        ]);
+
+        $queue->shouldReceive('connection')->once()->with(null)->andReturnSelf();
+
+        $queue->shouldReceive('pushOn')->once()->with(null, m::type('Illuminate\Events\CallQueuedListener'));
+
         $d->setQueueResolver(function () use ($queue) {
             return $queue;
         });
 
-        $d->listen('some.event', 'TestDispatcherQueuedHandler@someMethod');
-        $d->fire('some.event', ['foo', 'bar']);
-    }
-
-    public function testQueuedEventHandlersAreQueuedWithCustomHandlers()
-    {
-        $d = new Dispatcher;
-        $queue = m::mock('Illuminate\Contracts\Queue\Queue');
-        $queue->shouldReceive('push')->once()->with('Illuminate\Events\CallQueuedHandler@call', [
-            'class' => 'TestDispatcherQueuedHandlerCustomQueue',
-            'method' => 'someMethod',
-            'data' => serialize(['foo', 'bar']),
-        ]);
-        $d->setQueueResolver(function () use ($queue) {
-            return $queue;
-        });
-
-        $d->listen('some.event', 'TestDispatcherQueuedHandlerCustomQueue@someMethod');
+        $d->listen('some.event', 'Illuminate\Tests\Events\TestDispatcherQueuedHandler@someMethod');
         $d->fire('some.event', ['foo', 'bar']);
     }
 
@@ -185,7 +205,7 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
     {
         unset($_SERVER['__event.test']);
         $d = new Dispatcher;
-        $d->listen('ExampleEvent', function () {
+        $d->listen('Illuminate\Tests\Events\ExampleEvent', function () {
             $_SERVER['__event.test'] = 'baz';
         });
         $d->fire(new ExampleEvent);
@@ -197,7 +217,7 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
     {
         unset($_SERVER['__event.test']);
         $d = new Dispatcher;
-        $d->listen('SomeEventInterface', function () {
+        $d->listen('Illuminate\Tests\Events\SomeEventInterface', function () {
             $_SERVER['__event.test'] = 'bar';
         });
         $d->fire(new AnotherEvent);
@@ -209,10 +229,10 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
     {
         unset($_SERVER['__event.test']);
         $d = new Dispatcher;
-        $d->listen('AnotherEvent', function () {
+        $d->listen('Illuminate\Tests\Events\AnotherEvent', function () {
             $_SERVER['__event.test1'] = 'fooo';
         });
-        $d->listen('SomeEventInterface', function () {
+        $d->listen('Illuminate\Tests\Events\SomeEventInterface', function () {
             $_SERVER['__event.test2'] = 'baar';
         });
         $d->fire(new AnotherEvent);
@@ -220,16 +240,38 @@ class EventsDispatcherTest extends PHPUnit_Framework_TestCase
         $this->assertSame('fooo', $_SERVER['__event.test1']);
         $this->assertSame('baar', $_SERVER['__event.test2']);
     }
+
+    public function testShouldBroadcastSuccess()
+    {
+        $d = m::mock(Dispatcher::class);
+
+        $d->makePartial()->shouldAllowMockingProtectedMethods();
+
+        $event = new BroadcastEvent;
+
+        $this->assertTrue($d->shouldBroadcast([$event]));
+    }
+
+    public function testShouldBroadcastFail()
+    {
+        $d = m::mock(Dispatcher::class);
+
+        $d->makePartial()->shouldAllowMockingProtectedMethods();
+
+        $event = new BroadcastFalseCondition;
+
+        $this->assertFalse($d->shouldBroadcast([$event]));
+    }
 }
 
-class TestDispatcherQueuedHandler implements Illuminate\Contracts\Queue\ShouldQueue
+class TestDispatcherQueuedHandler implements \Illuminate\Contracts\Queue\ShouldQueue
 {
     public function handle()
     {
     }
 }
 
-class TestDispatcherQueuedHandlerCustomQueue implements Illuminate\Contracts\Queue\ShouldQueue
+class TestDispatcherQueuedHandlerCustomQueue implements \Illuminate\Contracts\Queue\ShouldQueue
 {
     public function handle()
     {
@@ -254,4 +296,25 @@ interface SomeEventInterface
 class AnotherEvent implements SomeEventInterface
 {
     //
+}
+
+class BroadcastEvent implements ShouldBroadcast
+{
+    public function broadcastOn()
+    {
+        return ['test-channel'];
+    }
+
+    public function broadcastWhen()
+    {
+        return true;
+    }
+}
+
+class BroadcastFalseCondition extends BroadcastEvent
+{
+    public function broadcastWhen()
+    {
+        return false;
+    }
 }

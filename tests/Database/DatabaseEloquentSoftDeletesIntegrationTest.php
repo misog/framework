@@ -1,15 +1,18 @@
 <?php
 
-use Carbon\Carbon;
+namespace Illuminate\Tests\Database;
+
+use Illuminate\Support\Carbon;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Connection;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Capsule\Manager as DB;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Database\Eloquent\Model as Eloquent;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
-class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestCase
+class DatabaseEloquentSoftDeletesIntegrationTest extends TestCase
 {
     public function setUp()
     {
@@ -145,6 +148,14 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
 
         $this->assertCount(2, SoftDeletesTestUser::withTrashed()->get());
         $this->assertInstanceOf(Eloquent::class, SoftDeletesTestUser::withTrashed()->find(1));
+    }
+
+    public function testWithTrashedAcceptsAnArgument()
+    {
+        $this->createUsers();
+
+        $this->assertCount(1, SoftDeletesTestUser::withTrashed(false)->get());
+        $this->assertCount(2, SoftDeletesTestUser::withTrashed(true)->get());
     }
 
     public function testDeleteSetsDeletedColumn()
@@ -392,39 +403,36 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $post = $abigail->posts()->create(['title' => 'First Title']);
 
         $users = SoftDeletesTestUser::where('email', 'taylorotwell@gmail.com')->has('posts')->get();
-        $this->assertEquals(0, count($users));
+        $this->assertCount(0, $users);
 
         $users = SoftDeletesTestUser::where('email', 'abigailotwell@gmail.com')->has('posts')->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
 
         $users = SoftDeletesTestUser::where('email', 'doesnt@exist.com')->orHas('posts')->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
 
         $users = SoftDeletesTestUser::whereHas('posts', function ($query) {
             $query->where('title', 'First Title');
         })->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
 
         $users = SoftDeletesTestUser::whereHas('posts', function ($query) {
             $query->where('title', 'Another Title');
         })->get();
-        $this->assertEquals(0, count($users));
+        $this->assertCount(0, $users);
 
         $users = SoftDeletesTestUser::where('email', 'doesnt@exist.com')->orWhereHas('posts', function ($query) {
             $query->where('title', 'First Title');
         })->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
 
         // With Post Deleted...
 
         $post->delete();
         $users = SoftDeletesTestUser::has('posts')->get();
-        $this->assertEquals(0, count($users));
+        $this->assertCount(0, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationshipAndOnlyTrashedCondition()
     {
         $this->createUsers();
@@ -434,22 +442,19 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $post->delete();
 
         $users = SoftDeletesTestUser::has('posts')->get();
-        $this->assertEquals(0, count($users));
+        $this->assertCount(0, $users);
 
         $users = SoftDeletesTestUser::whereHas('posts', function ($q) {
             $q->onlyTrashed();
         })->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
 
         $users = SoftDeletesTestUser::whereHas('posts', function ($q) {
             $q->withTrashed();
         })->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationship()
     {
         $this->createUsers();
@@ -460,15 +465,12 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $comment->delete();
 
         $users = SoftDeletesTestUser::has('posts.comments')->get();
-        $this->assertEquals(0, count($users));
+        $this->assertCount(0, $users);
 
         $users = SoftDeletesTestUser::doesntHave('posts.comments')->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWhereHasWithNestedDeletedRelationshipAndWithTrashedCondition()
     {
         $this->createUsers();
@@ -478,12 +480,9 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $post->delete();
 
         $users = SoftDeletesTestUserWithTrashedPosts::has('posts')->get();
-        $this->assertEquals(1, count($users));
+        $this->assertCount(1, $users);
     }
 
-    /**
-     * @group test
-     */
     public function testWithCountWithNestedDeletedRelationshipAndOnlyTrashedCondition()
     {
         $this->createUsers();
@@ -560,7 +559,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
     }
 
     /**
-     * @expectedException BadMethodCallException
+     * @expectedException \BadMethodCallException
      */
     public function testMorphToWithBadMethodCall()
     {
@@ -596,7 +595,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
             $q->where('email', 'taylorotwell@gmail.com');
         }])->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     public function testMorphToWithoutConstraints()
@@ -618,7 +617,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $abigail->delete();
         $comment = SoftDeletesTestCommentWithTrashed::with('owner')->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     public function testMorphToNonSoftDeletingModel()
@@ -638,7 +637,7 @@ class DatabaseEloquentSoftDeletesIntegrationTest extends PHPUnit_Framework_TestC
         $taylor->delete();
         $comment = SoftDeletesTestCommentWithTrashed::with('owner')->first();
 
-        $this->assertEquals(null, $comment->owner);
+        $this->assertNull($comment->owner);
     }
 
     /**

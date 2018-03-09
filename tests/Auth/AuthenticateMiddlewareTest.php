@@ -1,15 +1,20 @@
 <?php
 
+namespace Illuminate\Tests\Auth;
+
+use stdClass;
 use Mockery as m;
 use Illuminate\Http\Request;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Auth\AuthManager;
 use Illuminate\Auth\RequestGuard;
 use Illuminate\Container\Container;
+use Illuminate\Auth\EloquentUserProvider;
 use Illuminate\Config\Repository as Config;
-use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Auth\Middleware\Authenticate;
 
-class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
+class AuthenticateMiddlewareTest extends TestCase
 {
     protected $auth;
 
@@ -29,13 +34,30 @@ class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
         });
     }
 
+    /**
+     * @expectedException \Illuminate\Auth\AuthenticationException
+     * @expectedExceptionMessage Unauthenticated.
+     */
     public function testDefaultUnauthenticatedThrows()
     {
-        $this->setExpectedException(AuthenticationException::class);
-
         $this->registerAuthDriver('default', false);
 
         $this->authenticate();
+    }
+
+    public function testDefaultUnauthenticatedThrowsWithGuards()
+    {
+        try {
+            $this->registerAuthDriver('default', false);
+
+            $this->authenticate('default');
+        } catch (AuthenticationException $e) {
+            $this->assertContains('default', $e->guards());
+
+            return;
+        }
+
+        return $this->fail();
     }
 
     public function testDefaultAuthenticatedKeepsDefaultDriver()
@@ -58,10 +80,12 @@ class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
         $this->assertSame($secondary, $this->auth->guard());
     }
 
+    /**
+     * @expectedException \Illuminate\Auth\AuthenticationException
+     * @expectedExceptionMessage Unauthenticated.
+     */
     public function testMultipleDriversUnauthenticatedThrows()
     {
-        $this->setExpectedException(AuthenticationException::class);
-
         $this->registerAuthDriver('default', false);
 
         $this->registerAuthDriver('secondary', false);
@@ -69,7 +93,26 @@ class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
         $this->authenticate('default', 'secondary');
     }
 
-    public function testMultipleDriversAuthenticatedUdatesDefault()
+    public function testMultipleDriversUnauthenticatedThrowsWithGuards()
+    {
+        $expectedGuards = ['default', 'secondary'];
+
+        try {
+            $this->registerAuthDriver('default', false);
+
+            $this->registerAuthDriver('secondary', false);
+
+            $this->authenticate(...$expectedGuards);
+        } catch (AuthenticationException $e) {
+            $this->assertEquals($expectedGuards, $e->guards());
+
+            return;
+        }
+
+        return $this->fail();
+    }
+
+    public function testMultipleDriversAuthenticatedUpdatesDefault()
     {
         $this->registerAuthDriver('default', false);
 
@@ -126,7 +169,7 @@ class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
     {
         return new RequestGuard(function () use ($authenticated) {
             return $authenticated ? new stdClass : null;
-        }, m::mock(Request::class));
+        }, m::mock(Request::class), m::mock(EloquentUserProvider::class));
     }
 
     /**
@@ -135,7 +178,7 @@ class AuthenticateMiddlewareTest extends PHPUnit_Framework_TestCase
      * @param  string  ...$guards
      * @return void
      *
-     * @throws \Illuminate\Auth\AuthenticationException
+     * @throws AuthenticationException
      */
     protected function authenticate(...$guards)
     {

@@ -3,11 +3,15 @@
 namespace Illuminate\Cache;
 
 use Memcached;
-use Carbon\Carbon;
+use ReflectionMethod;
 use Illuminate\Contracts\Cache\Store;
+use Illuminate\Support\InteractsWithTime;
+use Illuminate\Contracts\Cache\LockProvider;
 
-class MemcachedStore extends TaggableStore implements Store
+class MemcachedStore extends TaggableStore implements LockProvider, Store
 {
+    use InteractsWithTime;
+
     /**
      * The Memcached instance.
      *
@@ -23,6 +27,13 @@ class MemcachedStore extends TaggableStore implements Store
     protected $prefix;
 
     /**
+     * Indicates whether we are using Memcached version >= 3.0.0.
+     *
+     * @var bool
+     */
+    protected $onVersionThree;
+
+    /**
      * Create a new Memcached store.
      *
      * @param  \Memcached  $memcached
@@ -33,12 +44,15 @@ class MemcachedStore extends TaggableStore implements Store
     {
         $this->setPrefix($prefix);
         $this->memcached = $memcached;
+
+        $this->onVersionThree = (new ReflectionMethod('Memcached', 'getMulti'))
+                            ->getNumberOfParameters() == 2;
     }
 
     /**
      * Retrieve an item from the cache by key.
      *
-     * @param  string|array  $key
+     * @param  string  $key
      * @return mixed
      */
     public function get($key)
@@ -64,7 +78,13 @@ class MemcachedStore extends TaggableStore implements Store
             return $this->prefix.$key;
         }, $keys);
 
-        $values = $this->memcached->getMulti($prefixedKeys, null, Memcached::GET_PRESERVE_ORDER);
+        if ($this->onVersionThree) {
+            $values = $this->memcached->getMulti($prefixedKeys, Memcached::GET_PRESERVE_ORDER);
+        } else {
+            $null = null;
+
+            $values = $this->memcached->getMulti($prefixedKeys, $null, Memcached::GET_PRESERVE_ORDER);
+        }
 
         if ($this->memcached->getResultCode() != 0) {
             return array_fill_keys($keys, null);
@@ -154,6 +174,18 @@ class MemcachedStore extends TaggableStore implements Store
     }
 
     /**
+     * Get a lock instance.
+     *
+     * @param  string  $name
+     * @param  int  $seconds
+     * @return \Illuminate\Contracts\Cache\Lock
+     */
+    public function lock($name, $seconds = 0)
+    {
+        return new MemcachedLock($this->memcached, $this->prefix.$name, $seconds);
+    }
+
+    /**
      * Remove an item from the cache.
      *
      * @param  string  $key
@@ -167,22 +199,22 @@ class MemcachedStore extends TaggableStore implements Store
     /**
      * Remove all items from the cache.
      *
-     * @return void
+     * @return bool
      */
     public function flush()
     {
-        $this->memcached->flush();
+        return $this->memcached->flush();
     }
 
     /**
      * Get the UNIX timestamp for the given number of minutes.
      *
-     * @parma  int  $minutes
+     * @param  int  $minutes
      * @return int
      */
     protected function toTimestamp($minutes)
     {
-        return $minutes > 0 ? Carbon::now()->timestamp + ((int) $minutes * 60) : 0;
+        return $minutes > 0 ? $this->availableAt($minutes * 60) : 0;
     }
 
     /**

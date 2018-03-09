@@ -1,8 +1,13 @@
 <?php
 
-use Illuminate\Support\Fluent;
+namespace Illuminate\Tests\Support;
 
-class SupportFluentTest extends PHPUnit_Framework_TestCase
+use ReflectionObject;
+use IteratorAggregate;
+use Illuminate\Support\Fluent;
+use PHPUnit\Framework\TestCase;
+
+class SupportFluentTest extends TestCase
 {
     public function testAttributesAreSetByConstructor()
     {
@@ -17,7 +22,7 @@ class SupportFluentTest extends PHPUnit_Framework_TestCase
         $this->assertEquals($array, $fluent->getAttributes());
     }
 
-    public function testAttributesAreSetByConstructorGivenStdClass()
+    public function testAttributesAreSetByConstructorGivenstdClass()
     {
         $array = ['name' => 'Taylor', 'age' => 25];
         $fluent = new Fluent((object) $array);
@@ -51,6 +56,18 @@ class SupportFluentTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('Default', $fluent->get('foo', 'Default'));
         $this->assertEquals('Taylor', $fluent->name);
         $this->assertNull($fluent->foo);
+    }
+
+    public function testArrayAccessToAttributes()
+    {
+        $fluent = new Fluent(['attributes' => '1']);
+
+        $this->assertTrue(isset($fluent['attributes']));
+        $this->assertEquals($fluent['attributes'], 1);
+
+        $fluent->attributes();
+
+        $this->assertTrue($fluent['attributes']);
     }
 
     public function testMagicMethodsCanBeUsedToSetAttributes()

@@ -1,8 +1,11 @@
 <?php
 
-use Mockery as m;
+namespace Illuminate\Tests\Cache;
 
-class CacheRedisStoreTest extends PHPUnit_Framework_TestCase
+use Mockery as m;
+use PHPUnit\Framework\TestCase;
+
+class CacheRedisStoreTest extends TestCase
 {
     public function tearDown()
     {
@@ -29,19 +32,20 @@ class CacheRedisStoreTest extends PHPUnit_Framework_TestCase
     {
         $redis = $this->getRedis();
         $redis->getRedis()->shouldReceive('connection')->once()->with('default')->andReturn($redis->getRedis());
-        $redis->getRedis()->shouldReceive('mget')->once()->with(['prefix:foo', 'prefix:fizz', 'prefix:norf'])
+        $redis->getRedis()->shouldReceive('mget')->once()->with(['prefix:foo', 'prefix:fizz', 'prefix:norf', 'prefix:null'])
             ->andReturn([
                 serialize('bar'),
                 serialize('buzz'),
                 serialize('quz'),
+                null,
             ]);
-        $this->assertEquals([
-            'foo'   => 'bar',
-            'fizz'  => 'buzz',
-            'norf'  => 'quz',
-        ], $redis->many([
-            'foo', 'fizz', 'norf',
-        ]));
+
+        $results = $redis->many(['foo', 'fizz', 'norf', 'null']);
+
+        $this->assertEquals('bar', $results['foo']);
+        $this->assertEquals('buzz', $results['fizz']);
+        $this->assertEquals('quz', $results['norf']);
+        $this->assertNull($results['null']);
     }
 
     public function testRedisValueIsReturnedForNumerics()
@@ -67,9 +71,9 @@ class CacheRedisStoreTest extends PHPUnit_Framework_TestCase
         $connection = $redis->getRedis();
         $connection->shouldReceive('connection')->with('default')->andReturn($redis->getRedis());
         $connection->shouldReceive('multi')->once();
-        $redis->getRedis()->shouldReceive('setex')->with('prefix:foo', 60 * 60, serialize('bar'));
-        $redis->getRedis()->shouldReceive('setex')->with('prefix:baz', 60 * 60, serialize('qux'));
-        $redis->getRedis()->shouldReceive('setex')->with('prefix:bar', 60 * 60, serialize('norf'));
+        $redis->getRedis()->shouldReceive('setex')->once()->with('prefix:foo', 60 * 60, serialize('bar'));
+        $redis->getRedis()->shouldReceive('setex')->once()->with('prefix:baz', 60 * 60, serialize('qux'));
+        $redis->getRedis()->shouldReceive('setex')->once()->with('prefix:bar', 60 * 60, serialize('norf'));
         $connection->shouldReceive('exec')->once();
 
         $redis->putMany([
@@ -119,6 +123,15 @@ class CacheRedisStoreTest extends PHPUnit_Framework_TestCase
         $redis->forget('foo');
     }
 
+    public function testFlushesCached()
+    {
+        $redis = $this->getRedis();
+        $redis->getRedis()->shouldReceive('connection')->once()->with('default')->andReturn($redis->getRedis());
+        $redis->getRedis()->shouldReceive('flushdb')->once()->andReturn('ok');
+        $result = $redis->flush();
+        $this->assertTrue($result);
+    }
+
     public function testGetAndSetPrefix()
     {
         $redis = $this->getRedis();
@@ -131,6 +144,6 @@ class CacheRedisStoreTest extends PHPUnit_Framework_TestCase
 
     protected function getRedis()
     {
-        return new Illuminate\Cache\RedisStore(m::mock('Illuminate\Redis\PredisDatabase'), 'prefix');
+        return new \Illuminate\Cache\RedisStore(m::mock('Illuminate\Contracts\Redis\Factory'), 'prefix');
     }
 }

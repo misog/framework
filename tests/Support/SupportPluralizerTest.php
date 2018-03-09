@@ -1,8 +1,11 @@
 <?php
 
-use Illuminate\Support\Str;
+namespace Illuminate\Tests\Support;
 
-class SupportPluralizerTest extends PHPUnit_Framework_TestCase
+use Illuminate\Support\Str;
+use PHPUnit\Framework\TestCase;
+
+class SupportPluralizerTest extends TestCase
 {
     public function testBasicSingular()
     {
@@ -12,6 +15,7 @@ class SupportPluralizerTest extends PHPUnit_Framework_TestCase
     public function testBasicPlural()
     {
         $this->assertEquals('children', Str::plural('child'));
+        $this->assertEquals('cod', Str::plural('cod'));
     }
 
     public function testCaseSensitiveSingularUsage()

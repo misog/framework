@@ -1,9 +1,13 @@
 <?php
 
+namespace Illuminate\Tests\Auth;
+
 use Mockery as m;
+use Illuminate\Support\Arr;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Contracts\Auth\PasswordBroker;
 
-class AuthPasswordBrokerTest extends PHPUnit_Framework_TestCase
+class AuthPasswordBrokerTest extends TestCase
 {
     public function tearDown()
     {
@@ -20,7 +24,8 @@ class AuthPasswordBrokerTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * @expectedException UnexpectedValueException
+     * @expectedException \UnexpectedValueException
+     * @expectedExceptionMessage User must implement CanResetPassword interface.
      */
     public function testGetUserThrowsExceptionIfUserDoesntImplementCanResetPassword()
     {
@@ -107,7 +112,7 @@ class AuthPasswordBrokerTest extends PHPUnit_Framework_TestCase
     {
         $creds = ['token' => 'token'];
         $broker = $this->getMockBuilder('Illuminate\Auth\Passwords\PasswordBroker')->setMethods(['validateNewPassword'])->setConstructorArgs(array_values($mocks = $this->getMocks()))->getMock();
-        $mocks['users']->shouldReceive('retrieveByCredentials')->once()->with(array_except($creds, ['token']))->andReturn($user = m::mock('Illuminate\Contracts\Auth\CanResetPassword'));
+        $mocks['users']->shouldReceive('retrieveByCredentials')->once()->with(Arr::except($creds, ['token']))->andReturn($user = m::mock('Illuminate\Contracts\Auth\CanResetPassword'));
         $broker->expects($this->once())->method('validateNewPassword')->will($this->returnValue(true));
         $mocks['tokens']->shouldReceive('exists')->with($user, 'token')->andReturn(false);
 
@@ -120,7 +125,7 @@ class AuthPasswordBrokerTest extends PHPUnit_Framework_TestCase
         unset($_SERVER['__password.reset.test']);
         $broker = $this->getMockBuilder('Illuminate\Auth\Passwords\PasswordBroker')->setMethods(['validateReset', 'getPassword', 'getToken'])->setConstructorArgs(array_values($mocks = $this->getMocks()))->getMock();
         $broker->expects($this->once())->method('validateReset')->will($this->returnValue($user = m::mock('Illuminate\Contracts\Auth\CanResetPassword')));
-        $mocks['tokens']->shouldReceive('delete')->once()->with('token');
+        $mocks['tokens']->shouldReceive('delete')->once()->with($user);
         $callback = function ($user, $password) {
             $_SERVER['__password.reset.test'] = compact('user', 'password');
 
@@ -133,7 +138,7 @@ class AuthPasswordBrokerTest extends PHPUnit_Framework_TestCase
 
     protected function getBroker($mocks)
     {
-        return new Illuminate\Auth\Passwords\PasswordBroker($mocks['tokens'], $mocks['users'], $mocks['mailer'], $mocks['view']);
+        return new \Illuminate\Auth\Passwords\PasswordBroker($mocks['tokens'], $mocks['users'], $mocks['mailer'], $mocks['view']);
     }
 
     protected function getMocks()

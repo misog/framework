@@ -1,9 +1,15 @@
 <?php
 
+namespace Illuminate\Tests\Support;
+
+use stdClass;
+use ArrayObject;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Support\Collection;
 
-class SupportArrTest extends PHPUnit_Framework_TestCase
+class SupportArrTest extends TestCase
 {
     public function testAccessible()
     {
@@ -28,6 +34,51 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
     {
         $data = [['foo', 'bar'], ['baz']];
         $this->assertEquals(['foo', 'bar', 'baz'], Arr::collapse($data));
+    }
+
+    public function testCrossJoin()
+    {
+        // Single dimension
+        $this->assertSame(
+            [[1, 'a'], [1, 'b'], [1, 'c']],
+            Arr::crossJoin([1], ['a', 'b', 'c'])
+        );
+
+        // Square matrix
+        $this->assertSame(
+            [[1, 'a'], [1, 'b'], [2, 'a'], [2, 'b']],
+            Arr::crossJoin([1, 2], ['a', 'b'])
+        );
+
+        // Rectangular matrix
+        $this->assertSame(
+            [[1, 'a'], [1, 'b'], [1, 'c'], [2, 'a'], [2, 'b'], [2, 'c']],
+            Arr::crossJoin([1, 2], ['a', 'b', 'c'])
+        );
+
+        // 3D matrix
+        $this->assertSame(
+            [
+                [1, 'a', 'I'], [1, 'a', 'II'], [1, 'a', 'III'],
+                [1, 'b', 'I'], [1, 'b', 'II'], [1, 'b', 'III'],
+                [2, 'a', 'I'], [2, 'a', 'II'], [2, 'a', 'III'],
+                [2, 'b', 'I'], [2, 'b', 'II'], [2, 'b', 'III'],
+            ],
+            Arr::crossJoin([1, 2], ['a', 'b'], ['I', 'II', 'III'])
+        );
+
+        // With 1 empty dimension
+        $this->assertEmpty(Arr::crossJoin([], ['a', 'b'], ['I', 'II', 'III']));
+        $this->assertEmpty(Arr::crossJoin([1, 2], [], ['I', 'II', 'III']));
+        $this->assertEmpty(Arr::crossJoin([1, 2], ['a', 'b'], []));
+
+        // With empty arrays
+        $this->assertEmpty(Arr::crossJoin([], [], []));
+        $this->assertEmpty(Arr::crossJoin([], []));
+        $this->assertEmpty(Arr::crossJoin([]));
+
+        // Not really a proper usage, still, test for preserving BC
+        $this->assertSame([[]], Arr::crossJoin());
     }
 
     public function testDivide()
@@ -218,8 +269,8 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
         $this->assertSame('default', Arr::get(null, null, 'default'));
 
         // Test $array is empty and key is null
-        $this->assertSame([], Arr::get([], null));
-        $this->assertSame([], Arr::get([], null, 'default'));
+        $this->assertEmpty(Arr::get([], null));
+        $this->assertEmpty(Arr::get([], null, 'default'));
     }
 
     public function testHas()
@@ -299,6 +350,16 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
         $this->assertEquals(['Taylor', 'Abigail'], $array);
     }
 
+    public function testPluckWithArrayValue()
+    {
+        $array = [
+            ['developer' => ['name' => 'Taylor']],
+            ['developer' => ['name' => 'Abigail']],
+        ];
+        $array = Arr::pluck($array, ['developer', 'name']);
+        $this->assertEquals(['Taylor', 'Abigail'], $array);
+    }
+
     public function testPluckWithKeys()
     {
         $array = [
@@ -318,6 +379,15 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
             'Taylor' => ['name' => 'Taylor', 'role' => 'developer'],
             'Abigail' => ['name' => 'Abigail', 'role' => 'developer'],
         ], $test2);
+    }
+
+    public function testPluckWithCarbonKeys()
+    {
+        $array = [
+            ['start' => new Carbon('2017-07-25 00:00:00'), 'end' => new Carbon('2017-07-30 00:00:00')],
+        ];
+        $array = Arr::pluck($array, 'end', 'start');
+        $this->assertEquals(['2017-07-25 00:00:00' => '2017-07-30 00:00:00'], $array);
     }
 
     public function testPrepend()
@@ -345,8 +415,80 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
         // Does not work for nested keys
         $array = ['emails' => ['joe@example.com' => 'Joe', 'jane@localhost' => 'Jane']];
         $name = Arr::pull($array, 'emails.joe@example.com');
-        $this->assertEquals(null, $name);
+        $this->assertNull($name);
         $this->assertEquals(['emails' => ['joe@example.com' => 'Joe', 'jane@localhost' => 'Jane']], $array);
+    }
+
+    public function testRandom()
+    {
+        $random = Arr::random(['foo', 'bar', 'baz']);
+        $this->assertContains($random, ['foo', 'bar', 'baz']);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], 0);
+        $this->assertInternalType('array', $random);
+        $this->assertCount(0, $random);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], 1);
+        $this->assertInternalType('array', $random);
+        $this->assertCount(1, $random);
+        $this->assertContains($random[0], ['foo', 'bar', 'baz']);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], 2);
+        $this->assertInternalType('array', $random);
+        $this->assertCount(2, $random);
+        $this->assertContains($random[0], ['foo', 'bar', 'baz']);
+        $this->assertContains($random[1], ['foo', 'bar', 'baz']);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], '0');
+        $this->assertInternalType('array', $random);
+        $this->assertCount(0, $random);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], '1');
+        $this->assertInternalType('array', $random);
+        $this->assertCount(1, $random);
+        $this->assertContains($random[0], ['foo', 'bar', 'baz']);
+
+        $random = Arr::random(['foo', 'bar', 'baz'], '2');
+        $this->assertInternalType('array', $random);
+        $this->assertCount(2, $random);
+        $this->assertContains($random[0], ['foo', 'bar', 'baz']);
+        $this->assertContains($random[1], ['foo', 'bar', 'baz']);
+    }
+
+    public function testRandomOnEmptyArray()
+    {
+        $random = Arr::random([], 0);
+        $this->assertInternalType('array', $random);
+        $this->assertCount(0, $random);
+
+        $random = Arr::random([], '0');
+        $this->assertInternalType('array', $random);
+        $this->assertCount(0, $random);
+    }
+
+    public function testRandomThrowsAnErrorWhenRequestingMoreItemsThanAreAvailable()
+    {
+        $exceptions = 0;
+
+        try {
+            Arr::random([]);
+        } catch (\InvalidArgumentException $e) {
+            $exceptions++;
+        }
+
+        try {
+            Arr::random([], 1);
+        } catch (\InvalidArgumentException $e) {
+            $exceptions++;
+        }
+
+        try {
+            Arr::random([], 2);
+        } catch (\InvalidArgumentException $e) {
+            $exceptions++;
+        }
+
+        $this->assertSame(3, $exceptions);
     }
 
     public function testSet()
@@ -367,6 +509,9 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
             ['name' => 'Chair'],
             ['name' => 'Desk'],
         ];
+
+        $sorted = array_values(Arr::sort($unsorted));
+        $this->assertEquals($expected, $sorted);
 
         // sort with closure
         $sortedWithClosure = array_values(Arr::sort($unsorted, function ($value) {
@@ -506,5 +651,17 @@ class SupportArrTest extends PHPUnit_Framework_TestCase
         $array = ['emails' => ['joe@example.com' => ['name' => 'Joe'], 'jane@localhost' => ['name' => 'Jane']]];
         Arr::forget($array, ['emails.joe@example.com', 'emails.jane@localhost']);
         $this->assertEquals(['emails' => ['joe@example.com' => ['name' => 'Joe']]], $array);
+    }
+
+    public function testWrap()
+    {
+        $string = 'a';
+        $array = ['a'];
+        $object = new stdClass;
+        $object->value = 'a';
+        $this->assertEquals(['a'], Arr::wrap($string));
+        $this->assertEquals($array, Arr::wrap($array));
+        $this->assertEquals([$object], Arr::wrap($object));
+        $this->assertEquals([], Arr::wrap(null));
     }
 }

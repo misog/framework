@@ -1,9 +1,12 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
-class DatabaseEloquentMorphToTest extends PHPUnit_Framework_TestCase
+class DatabaseEloquentMorphToTest extends TestCase
 {
     public function tearDown()
     {
@@ -54,6 +57,20 @@ class DatabaseEloquentMorphToTest extends PHPUnit_Framework_TestCase
         $relation->associate($associate);
     }
 
+    public function testAssociateMethodIgnoresNullValue()
+    {
+        $parent = m::mock('Illuminate\Database\Eloquent\Model');
+        $parent->shouldReceive('getAttribute')->once()->with('foreign_key')->andReturn('foreign.value');
+
+        $relation = $this->getRelationAssociate($parent);
+
+        $parent->shouldReceive('setAttribute')->once()->with('foreign_key', null);
+        $parent->shouldReceive('setAttribute')->once()->with('morph_type', null);
+        $parent->shouldReceive('setRelation')->once()->with('relation', null);
+
+        $relation->associate(null);
+    }
+
     public function testDissociateMethodDeletesUnsetsKeyAndTypeOnModel()
     {
         $parent = m::mock('Illuminate\Database\Eloquent\Model');
@@ -95,7 +112,7 @@ class DatabaseEloquentMorphToTest extends PHPUnit_Framework_TestCase
     }
 }
 
-class EloquentMorphToModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentMorphToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key = 'foreign.value';
 }

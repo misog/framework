@@ -1,8 +1,11 @@
 <?php
 
+namespace Illuminate\Tests\Pipeline;
+
+use PHPUnit\Framework\TestCase;
 use Illuminate\Pipeline\Pipeline;
 
-class PipelineTest extends PHPUnit_Framework_TestCase
+class PipelineTest extends TestCase
 {
     public function testPipelineBasicUsage()
     {
@@ -12,9 +15,9 @@ class PipelineTest extends PHPUnit_Framework_TestCase
             return $next($piped);
         };
 
-        $result = (new Pipeline(new Illuminate\Container\Container))
+        $result = (new Pipeline(new \Illuminate\Container\Container))
                     ->send('foo')
-                    ->through(['PipelineTestPipeOne', $pipeTwo])
+                    ->through(['Illuminate\Tests\Pipeline\PipelineTestPipeOne', $pipeTwo])
                     ->then(function ($piped) {
                         return $piped;
                     });
@@ -29,7 +32,7 @@ class PipelineTest extends PHPUnit_Framework_TestCase
 
     public function testPipelineUsageWithObjects()
     {
-        $result = (new Pipeline(new Illuminate\Container\Container))
+        $result = (new Pipeline(new \Illuminate\Container\Container))
             ->send('foo')
             ->through([new PipelineTestPipeOne])
             ->then(function ($piped) {
@@ -42,13 +45,70 @@ class PipelineTest extends PHPUnit_Framework_TestCase
         unset($_SERVER['__test.pipe.one']);
     }
 
+    public function testPipelineUsageWithInvokableObjects()
+    {
+        $result = (new Pipeline(new \Illuminate\Container\Container))
+            ->send('foo')
+            ->through([new PipelineTestPipeTwo])
+            ->then(
+                function ($piped) {
+                    return $piped;
+                }
+            );
+
+        $this->assertEquals('foo', $result);
+        $this->assertEquals('foo', $_SERVER['__test.pipe.one']);
+
+        unset($_SERVER['__test.pipe.one']);
+    }
+
+    public function testPipelineUsageWithCallable()
+    {
+        $function = function ($piped, $next) {
+            $_SERVER['__test.pipe.one'] = 'foo';
+
+            return $next($piped);
+        };
+
+        $result = (new Pipeline(new \Illuminate\Container\Container))
+            ->send('foo')
+            ->through([$function])
+            ->then(
+                function ($piped) {
+                    return $piped;
+                }
+            );
+
+        $this->assertEquals('foo', $result);
+        $this->assertEquals('foo', $_SERVER['__test.pipe.one']);
+
+        unset($_SERVER['__test.pipe.one']);
+    }
+
+    public function testPipelineUsageWithInvokableClass()
+    {
+        $result = (new Pipeline(new \Illuminate\Container\Container))
+            ->send('foo')
+            ->through([PipelineTestPipeTwo::class])
+            ->then(
+                function ($piped) {
+                    return $piped;
+                }
+            );
+
+        $this->assertEquals('foo', $result);
+        $this->assertEquals('foo', $_SERVER['__test.pipe.one']);
+
+        unset($_SERVER['__test.pipe.one']);
+    }
+
     public function testPipelineUsageWithParameters()
     {
         $parameters = ['one', 'two'];
 
-        $result = (new Pipeline(new Illuminate\Container\Container))
+        $result = (new Pipeline(new \Illuminate\Container\Container))
             ->send('foo')
-            ->through('PipelineTestParameterPipe:'.implode(',', $parameters))
+            ->through('Illuminate\Tests\Pipeline\PipelineTestParameterPipe:'.implode(',', $parameters))
             ->then(function ($piped) {
                 return $piped;
             });
@@ -61,9 +121,9 @@ class PipelineTest extends PHPUnit_Framework_TestCase
 
     public function testPipelineViaChangesTheMethodBeingCalledOnThePipes()
     {
-        $pipelineInstance = new Pipeline(new Illuminate\Container\Container);
+        $pipelineInstance = new Pipeline(new \Illuminate\Container\Container);
         $result = $pipelineInstance->send('data')
-            ->through('PipelineTestPipeOne')
+            ->through('Illuminate\Tests\Pipeline\PipelineTestPipeOne')
             ->via('differentMethod')
             ->then(function ($piped) {
                 return $piped;
@@ -73,11 +133,12 @@ class PipelineTest extends PHPUnit_Framework_TestCase
 
     /**
      * @expectedException \RuntimeException
+     * @expectedExceptionMessage A container instance has not been passed to the Pipeline.
      */
     public function testPipelineThrowsExceptionOnResolveWithoutContainer()
     {
         (new Pipeline)->send('data')
-            ->through('PipelineTestPipeOne')
+            ->through('Illuminate\Tests\Pipeline\PipelineTestPipeOne')
             ->then(function ($piped) {
                 return $piped;
             });
@@ -95,6 +156,16 @@ class PipelineTestPipeOne
 
     public function differentMethod($piped, $next)
     {
+        return $next($piped);
+    }
+}
+
+class PipelineTestPipeTwo
+{
+    public function __invoke($piped, $next)
+    {
+        $_SERVER['__test.pipe.one'] = $piped;
+
         return $next($piped);
     }
 }

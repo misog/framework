@@ -1,14 +1,66 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class DatabaseEloquentBelongsToTest extends PHPUnit_Framework_TestCase
+class DatabaseEloquentBelongsToTest extends TestCase
 {
+    protected $builder;
+
+    protected $related;
+
     public function tearDown()
     {
         m::close();
+    }
+
+    public function testBelongsToWithDefault()
+    {
+        $relation = $this->getRelation()->withDefault(); //belongsTo relationships
+
+        $this->builder->shouldReceive('first')->once()->andReturnNull();
+
+        $newModel = new EloquentBelongsToModelStub();  //ie Blog
+
+        $this->related->shouldReceive('newInstance')->once()->andReturn($newModel);
+
+        $this->assertSame($newModel, $relation->getResults());
+    }
+
+    public function testBelongsToWithDynamicDefault()
+    {
+        $relation = $this->getRelation()->withDefault(function ($newModel) {
+            $newModel->username = 'taylor';
+        });
+
+        $this->builder->shouldReceive('first')->once()->andReturnNull();
+
+        $newModel = new EloquentBelongsToModelStub();
+
+        $this->related->shouldReceive('newInstance')->once()->andReturn($newModel);
+
+        $this->assertSame($newModel, $relation->getResults());
+
+        $this->assertSame('taylor', $newModel->username);
+    }
+
+    public function testBelongsToWithArrayDefault()
+    {
+        $relation = $this->getRelation()->withDefault(['username' => 'taylor']);
+
+        $this->builder->shouldReceive('first')->once()->andReturnNull();
+
+        $newModel = new EloquentBelongsToModelStub();
+
+        $this->related->shouldReceive('newInstance')->once()->andReturn($newModel);
+
+        $this->assertSame($newModel, $relation->getResults());
+
+        $this->assertSame('taylor', $newModel->username);
     }
 
     public function testUpdateMethodRetrievesModelAndUpdates()
@@ -27,6 +79,14 @@ class DatabaseEloquentBelongsToTest extends PHPUnit_Framework_TestCase
         $relation = $this->getRelation();
         $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', ['foreign.value', 'foreign.value.two']);
         $models = [new EloquentBelongsToModelStub, new EloquentBelongsToModelStub, new AnotherEloquentBelongsToModelStub];
+        $relation->addEagerConstraints($models);
+    }
+
+    public function testIdsInEagerConstraintsCanBeZero()
+    {
+        $relation = $this->getRelation();
+        $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', ['foreign.value', 0]);
+        $models = [new EloquentBelongsToModelStub, new EloquentBelongsToModelStubWithZeroId];
         $relation->addEagerConstraints($models);
     }
 
@@ -92,7 +152,15 @@ class DatabaseEloquentBelongsToTest extends PHPUnit_Framework_TestCase
     public function testDefaultEagerConstraintsWhenIncrementing()
     {
         $relation = $this->getRelation();
-        $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', m::mustBe([0]));
+        $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', m::mustBe([null]));
+        $models = [new MissingEloquentBelongsToModelStub, new MissingEloquentBelongsToModelStub];
+        $relation->addEagerConstraints($models);
+    }
+
+    public function testDefaultEagerConstraintsWhenIncrementingAndNonIntKeyType()
+    {
+        $relation = $this->getRelation(null, false, 'string');
+        $relation->getQuery()->shouldReceive('whereIn')->once()->with('relation.id', m::mustBe([null]));
         $models = [new MissingEloquentBelongsToModelStub, new MissingEloquentBelongsToModelStub];
         $relation->addEagerConstraints($models);
     }
@@ -105,33 +173,39 @@ class DatabaseEloquentBelongsToTest extends PHPUnit_Framework_TestCase
         $relation->addEagerConstraints($models);
     }
 
-    protected function getRelation($parent = null, $incrementing = true)
+    protected function getRelation($parent = null, $incrementing = true, $keyType = 'int')
     {
-        $builder = m::mock('Illuminate\Database\Eloquent\Builder');
-        $builder->shouldReceive('where')->with('relation.id', '=', 'foreign.value');
-        $related = m::mock('Illuminate\Database\Eloquent\Model');
-        $related->incrementing = $incrementing;
-        $related->shouldReceive('getIncrementing')->andReturn($incrementing);
-        $related->shouldReceive('getKeyName')->andReturn('id');
-        $related->shouldReceive('getTable')->andReturn('relation');
-        $builder->shouldReceive('getModel')->andReturn($related);
+        $this->builder = m::mock('Illuminate\Database\Eloquent\Builder');
+        $this->builder->shouldReceive('where')->with('relation.id', '=', 'foreign.value');
+        $this->related = m::mock('Illuminate\Database\Eloquent\Model');
+        $this->related->incrementing = $incrementing;
+        $this->related->shouldReceive('getKeyType')->andReturn($keyType);
+        $this->related->shouldReceive('getIncrementing')->andReturn($incrementing);
+        $this->related->shouldReceive('getKeyName')->andReturn('id');
+        $this->related->shouldReceive('getTable')->andReturn('relation');
+        $this->builder->shouldReceive('getModel')->andReturn($this->related);
         $parent = $parent ?: new EloquentBelongsToModelStub;
 
-        return new BelongsTo($builder, $parent, 'foreign_key', 'id', 'relation');
+        return new BelongsTo($this->builder, $parent, 'foreign_key', 'id', 'relation');
     }
 }
 
-class EloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key = 'foreign.value';
 }
 
-class AnotherEloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class AnotherEloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
 {
     public $foreign_key = 'foreign.value.two';
 }
 
-class MissingEloquentBelongsToModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentBelongsToModelStubWithZeroId extends \Illuminate\Database\Eloquent\Model
 {
-    public $foreign_key = null;
+    public $foreign_key = 0;
+}
+
+class MissingEloquentBelongsToModelStub extends \Illuminate\Database\Eloquent\Model
+{
+    public $foreign_key;
 }

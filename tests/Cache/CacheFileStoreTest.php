@@ -1,14 +1,32 @@
 <?php
 
+namespace Illuminate\Tests\Cache;
+
+use Illuminate\Support\Carbon;
 use Illuminate\Cache\FileStore;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 
-class CacheFileStoreTest extends PHPUnit_Framework_TestCase
+class CacheFileStoreTest extends TestCase
 {
+    public function setUp()
+    {
+        parent::setUp();
+
+        Carbon::setTestNow(Carbon::now());
+    }
+
+    public function tearDown()
+    {
+        parent::tearDown();
+
+        Carbon::setTestNow(null);
+    }
+
     public function testNullIsReturnedIfFileDoesntExist()
     {
         $files = $this->mockFilesystem();
-        $files->expects($this->once())->method('get')->will($this->throwException(new FileNotFoundException()));
+        $files->expects($this->once())->method('get')->will($this->throwException(new FileNotFoundException));
         $store = new FileStore($files, __DIR__);
         $value = $store->get('foo');
         $this->assertNull($value);
@@ -82,7 +100,7 @@ class CacheFileStoreTest extends PHPUnit_Framework_TestCase
     public function testIncrementDoesNotExtendCacheLife()
     {
         $files = $this->mockFilesystem();
-        $expiration = time() + 59;
+        $expiration = Carbon::now()->addSeconds(50)->getTimestamp();
         $initialValue = $expiration.serialize(1);
         $valueAfterIncrement = $expiration.serialize(2);
         $store = new FileStore($files, __DIR__);
@@ -120,10 +138,23 @@ class CacheFileStoreTest extends PHPUnit_Framework_TestCase
         $files = $this->mockFilesystem();
         $files->expects($this->once())->method('isDirectory')->with($this->equalTo(__DIR__))->will($this->returnValue(true));
         $files->expects($this->once())->method('directories')->with($this->equalTo(__DIR__))->will($this->returnValue(['foo']));
-        $files->expects($this->once())->method('deleteDirectory')->with($this->equalTo('foo'));
+        $files->expects($this->once())->method('deleteDirectory')->with($this->equalTo('foo'))->will($this->returnValue(true));
 
         $store = new FileStore($files, __DIR__);
-        $store->flush();
+        $result = $store->flush();
+        $this->assertTrue($result, 'Flush failed');
+    }
+
+    public function testFlushFailsDirectoryClean()
+    {
+        $files = $this->mockFilesystem();
+        $files->expects($this->once())->method('isDirectory')->with($this->equalTo(__DIR__))->will($this->returnValue(true));
+        $files->expects($this->once())->method('directories')->with($this->equalTo(__DIR__))->will($this->returnValue(['foo']));
+        $files->expects($this->once())->method('deleteDirectory')->with($this->equalTo('foo'))->will($this->returnValue(false));
+
+        $store = new FileStore($files, __DIR__);
+        $result = $store->flush();
+        $this->assertFalse($result, 'Flush should not have cleared directories');
     }
 
     public function testFlushIgnoreNonExistingDirectory()
@@ -132,7 +163,8 @@ class CacheFileStoreTest extends PHPUnit_Framework_TestCase
         $files->expects($this->once())->method('isDirectory')->with($this->equalTo(__DIR__.'--wrong'))->will($this->returnValue(false));
 
         $store = new FileStore($files, __DIR__.'--wrong');
-        $store->flush();
+        $result = $store->flush();
+        $this->assertFalse($result, 'Flush should not clean directory');
     }
 
     protected function mockFilesystem()

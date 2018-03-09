@@ -1,12 +1,16 @@
 <?php
 
+namespace Illuminate\Tests\Auth;
+
+use Mockery;
 use Illuminate\Http\Request;
 use Illuminate\Auth\TokenGuard;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Contracts\Auth\UserProvider;
 
-class AuthTokenGuardTest extends PHPUnit_Framework_TestCase
+class AuthTokenGuardTest extends TestCase
 {
-    public function tearDown()
+    protected function tearDown()
     {
         Mockery::close();
     }
@@ -71,8 +75,6 @@ class AuthTokenGuardTest extends PHPUnit_Framework_TestCase
     public function testValidateCanDetermineIfCredentialsAreInvalid()
     {
         $provider = Mockery::mock(UserProvider::class);
-        $user = new AuthTokenGuardTestUser;
-        $user->id = 1;
         $provider->shouldReceive('retrieveByCredentials')->once()->with(['api_token' => 'foo'])->andReturn(null);
         $request = Request::create('/', 'GET', ['api_token' => 'foo']);
 
@@ -84,13 +86,27 @@ class AuthTokenGuardTest extends PHPUnit_Framework_TestCase
     public function testValidateIfApiTokenIsEmpty()
     {
         $provider = Mockery::mock(UserProvider::class);
-        $user = new AuthTokenGuardTestUser;
-        $user->id = 1;
         $request = Request::create('/', 'GET', ['api_token' => '']);
 
         $guard = new TokenGuard($provider, $request);
 
         $this->assertFalse($guard->validate(['api_token' => '']));
+    }
+
+    public function testItAllowsToPassCustomRequestInSetterAndUseItForValidation()
+    {
+        $provider = Mockery::mock(UserProvider::class);
+        $user = new AuthTokenGuardTestUser;
+        $user->id = 1;
+        $provider->shouldReceive('retrieveByCredentials')->once()->with(['api_token' => 'custom'])->andReturn($user);
+        $request = Request::create('/', 'GET', ['api_token' => 'foo']);
+
+        $guard = new TokenGuard($provider, $request);
+        $guard->setRequest(Request::create('/', 'GET', ['api_token' => 'custom']));
+
+        $user = $guard->user();
+
+        $this->assertEquals(1, $user->id);
     }
 }
 

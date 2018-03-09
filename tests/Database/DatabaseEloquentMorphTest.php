@@ -1,12 +1,15 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
-class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
+class DatabaseEloquentMorphTest extends TestCase
 {
     public function tearDown()
     {
@@ -53,6 +56,20 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
         $model2 = new EloquentMorphResetModelStub;
         $model2->id = 2;
         $relation->addEagerConstraints([$model1, $model2]);
+    }
+
+    public function testMakeFunctionOnMorph()
+    {
+        $_SERVER['__eloquent.saved'] = false;
+        // Doesn't matter which relation type we use since they share the code...
+        $relation = $this->getOneRelation();
+        $instance = m::mock('Illuminate\Database\Eloquent\Model');
+        $instance->shouldReceive('setAttribute')->once()->with('morph_id', 1);
+        $instance->shouldReceive('setAttribute')->once()->with('morph_type', get_class($relation->getParent()));
+        $instance->shouldReceive('save')->never();
+        $relation->getRelated()->shouldReceive('newInstance')->once()->with(['name' => 'taylor'])->andReturn($instance);
+
+        $this->assertEquals($instance, $relation->make(['name' => 'taylor']));
     }
 
     public function testCreateFunctionOnMorph()
@@ -103,6 +120,18 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
         $this->assertInstanceOf(Model::class, $relation->firstOrNew(['foo']));
     }
 
+    public function testFirstOrNewMethodWithValueFindsFirstModel()
+    {
+        $relation = $this->getOneRelation();
+        $relation->getQuery()->shouldReceive('where')->once()->with(['foo' => 'bar'])->andReturn($relation->getQuery());
+        $relation->getQuery()->shouldReceive('first')->once()->with()->andReturn($model = m::mock('Illuminate\Database\Eloquent\Model'));
+        $relation->getRelated()->shouldReceive('newInstance')->never();
+        $model->shouldReceive('setAttribute')->never();
+        $model->shouldReceive('save')->never();
+
+        $this->assertInstanceOf(Model::class, $relation->firstOrNew(['foo' => 'bar'], ['baz' => 'qux']));
+    }
+
     public function testFirstOrNewMethodReturnsNewModelWithMorphKeysSet()
     {
         $relation = $this->getOneRelation();
@@ -114,6 +143,19 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
         $model->shouldReceive('save')->never();
 
         $this->assertInstanceOf(Model::class, $relation->firstOrNew(['foo']));
+    }
+
+    public function testFirstOrNewMethodWithValuesReturnsNewModelWithMorphKeysSet()
+    {
+        $relation = $this->getOneRelation();
+        $relation->getQuery()->shouldReceive('where')->once()->with(['foo' => 'bar'])->andReturn($relation->getQuery());
+        $relation->getQuery()->shouldReceive('first')->once()->with()->andReturn(null);
+        $relation->getRelated()->shouldReceive('newInstance')->once()->with(['foo' => 'bar', 'baz' => 'qux'])->andReturn($model = m::mock('Illuminate\Database\Eloquent\Model'));
+        $model->shouldReceive('setAttribute')->once()->with('morph_id', 1);
+        $model->shouldReceive('setAttribute')->once()->with('morph_type', get_class($relation->getParent()));
+        $model->shouldReceive('save')->never();
+
+        $this->assertInstanceOf(Model::class, $relation->firstOrNew(['foo' => 'bar'], ['baz' => 'qux']));
     }
 
     public function testFirstOrCreateMethodFindsFirstModel()
@@ -128,6 +170,18 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
         $this->assertInstanceOf(Model::class, $relation->firstOrCreate(['foo']));
     }
 
+    public function testFirstOrCreateMethodWithValuesFindsFirstModel()
+    {
+        $relation = $this->getOneRelation();
+        $relation->getQuery()->shouldReceive('where')->once()->with(['foo' => 'bar'])->andReturn($relation->getQuery());
+        $relation->getQuery()->shouldReceive('first')->once()->with()->andReturn($model = m::mock('Illuminate\Database\Eloquent\Model'));
+        $relation->getRelated()->shouldReceive('newInstance')->never();
+        $model->shouldReceive('setAttribute')->never();
+        $model->shouldReceive('save')->never();
+
+        $this->assertInstanceOf(Model::class, $relation->firstOrCreate(['foo' => 'bar'], ['baz' => 'qux']));
+    }
+
     public function testFirstOrCreateMethodCreatesNewMorphModel()
     {
         $relation = $this->getOneRelation();
@@ -139,6 +193,19 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
         $model->shouldReceive('save')->once()->andReturn(true);
 
         $this->assertInstanceOf(Model::class, $relation->firstOrCreate(['foo']));
+    }
+
+    public function testFirstOrCreateMethodWithValuesCreatesNewMorphModel()
+    {
+        $relation = $this->getOneRelation();
+        $relation->getQuery()->shouldReceive('where')->once()->with(['foo' => 'bar'])->andReturn($relation->getQuery());
+        $relation->getQuery()->shouldReceive('first')->once()->with()->andReturn(null);
+        $relation->getRelated()->shouldReceive('newInstance')->once()->with(['foo' => 'bar', 'baz' => 'qux'])->andReturn($model = m::mock('Illuminate\Database\Eloquent\Model'));
+        $model->shouldReceive('setAttribute')->once()->with('morph_id', 1);
+        $model->shouldReceive('setAttribute')->once()->with('morph_type', get_class($relation->getParent()));
+        $model->shouldReceive('save')->once()->andReturn(true);
+
+        $this->assertInstanceOf(Model::class, $relation->firstOrCreate(['foo' => 'bar'], ['baz' => 'qux']));
     }
 
     public function testUpdateOrCreateMethodFindsFirstModelAndUpdates()
@@ -232,6 +299,6 @@ class DatabaseEloquentMorphTest extends PHPUnit_Framework_TestCase
     }
 }
 
-class EloquentMorphResetModelStub extends Illuminate\Database\Eloquent\Model
+class EloquentMorphResetModelStub extends \Illuminate\Database\Eloquent\Model
 {
 }

@@ -1,11 +1,14 @@
 <?php
 
+namespace Illuminate\Tests\Database;
+
 use Mockery as m;
-use Illuminate\Database\Connection;
+use ReflectionProperty;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Database\Capsule\Manager as DB;
 use Illuminate\Database\Connectors\ConnectionFactory;
 
-class DatabaseConnectionFactoryTest extends PHPUnit_Framework_TestCase
+class DatabaseConnectionFactoryTest extends TestCase
 {
     protected $db;
 
@@ -69,7 +72,8 @@ class DatabaseConnectionFactoryTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * @expectedException InvalidArgumentException
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage A driver must be specified.
      */
     public function testIfDriverIsntSetExceptionIsThrown()
     {
@@ -78,7 +82,8 @@ class DatabaseConnectionFactoryTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * @expectedException InvalidArgumentException
+     * @expectedException \InvalidArgumentException
+     * @expectedExceptionMessage Unsupported driver [foo]
      */
     public function testExceptionIsThrownOnUnsupportedDriver()
     {

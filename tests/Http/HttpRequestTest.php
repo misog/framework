@@ -1,11 +1,14 @@
 <?php
 
+namespace Illuminate\Tests\Http;
+
 use Mockery as m;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use PHPUnit\Framework\TestCase;
 use Symfony\Component\HttpFoundation\Request as SymfonyRequest;
 
-class HttpRequestTest extends PHPUnit_Framework_TestCase
+class HttpRequestTest extends TestCase
 {
     public function tearDown()
     {
@@ -154,6 +157,53 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($request->is('/'));
     }
 
+    public function testFullUrlIsMethod()
+    {
+        $request = Request::create('http://example.com/foo/bar', 'GET');
+
+        $this->assertTrue($request->fullUrlIs('http://example.com/foo/bar'));
+        $this->assertFalse($request->fullUrlIs('example.com*'));
+        $this->assertTrue($request->fullUrlIs('http://*'));
+        $this->assertTrue($request->fullUrlIs('*foo*'));
+        $this->assertTrue($request->fullUrlIs('*bar'));
+        $this->assertTrue($request->fullUrlIs('*'));
+    }
+
+    public function testRouteIsMethod()
+    {
+        $request = Request::create('/foo/bar', 'GET');
+
+        $this->assertFalse($request->routeIs('foo.bar'));
+
+        $request->setRouteResolver(function () use ($request) {
+            $route = new Route('GET', '/foo/bar', ['as' => 'foo.bar']);
+            $route->bind($request);
+
+            return $route;
+        });
+
+        $this->assertTrue($request->routeIs('foo.bar'));
+        $this->assertTrue($request->routeIs('foo*', '*bar'));
+        $this->assertFalse($request->routeIs('foo.foo'));
+    }
+
+    public function testRouteMethod()
+    {
+        $request = Request::create('/foo/bar', 'GET');
+
+        $request->setRouteResolver(function () use ($request) {
+            $route = new Route('GET', '/foo/{required}/{optional?}', []);
+            $route->bind($request);
+
+            return $route;
+        });
+
+        $this->assertEquals('bar', $request->route('required'));
+        $this->assertEquals('bar', $request->route('required', 'default'));
+        $this->assertNull($request->route('optional'));
+        $this->assertEquals('default', $request->route('optional', 'default'));
+    }
+
     public function testAjaxMethod()
     {
         $request = Request::create('/', 'GET');
@@ -187,33 +237,21 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($request->secure());
     }
 
-    public function testExistsMethod()
+    public function testUserAgentMethod()
     {
-        $request = Request::create('/', 'GET', ['name' => 'Taylor']);
-        $this->assertTrue($request->exists('name'));
-        $this->assertFalse($request->exists('foo'));
-        $this->assertFalse($request->exists('name', 'email'));
+        $request = Request::create('/', 'GET', [], [], [], [
+            'HTTP_USER_AGENT' => 'Laravel',
+        ]);
 
-        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
-        $this->assertTrue($request->exists('name'));
-        $this->assertTrue($request->exists('name', 'email'));
-
-        $request = Request::create('/', 'GET', ['foo' => ['bar', 'bar']]);
-        $this->assertTrue($request->exists('foo'));
-
-        $request = Request::create('/', 'GET', ['foo' => '', 'bar' => null]);
-        $this->assertTrue($request->exists('foo'));
-        $this->assertTrue($request->exists('bar'));
-
-        $request = Request::create('/', 'GET', ['foo' => ['bar' => null, 'baz' => '']]);
-        $this->assertTrue($request->exists('foo.bar'));
-        $this->assertTrue($request->exists('foo.baz'));
+        $this->assertEquals('Laravel', $request->userAgent());
     }
 
     public function testHasMethod()
     {
-        $request = Request::create('/', 'GET', ['name' => 'Taylor']);
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => '', 'city' => null]);
         $this->assertTrue($request->has('name'));
+        $this->assertTrue($request->has('age'));
+        $this->assertTrue($request->has('city'));
         $this->assertFalse($request->has('foo'));
         $this->assertFalse($request->has('name', 'email'));
 
@@ -221,12 +259,59 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertTrue($request->has('name'));
         $this->assertTrue($request->has('name', 'email'));
 
-        //test arrays within query string
-        $request = Request::create('/', 'GET', ['foo' => ['bar', 'baz']]);
+        $request = Request::create('/', 'GET', ['foo' => ['bar', 'bar']]);
         $this->assertTrue($request->has('foo'));
 
-        $request = Request::create('/', 'GET', ['foo' => ['bar' => 'baz']]);
+        $request = Request::create('/', 'GET', ['foo' => '', 'bar' => null]);
+        $this->assertTrue($request->has('foo'));
+        $this->assertTrue($request->has('bar'));
+
+        $request = Request::create('/', 'GET', ['foo' => ['bar' => null, 'baz' => '']]);
         $this->assertTrue($request->has('foo.bar'));
+        $this->assertTrue($request->has('foo.baz'));
+    }
+
+    public function testHasAnyMethod()
+    {
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => '', 'city' => null]);
+        $this->assertTrue($request->hasAny('name'));
+        $this->assertTrue($request->hasAny('age'));
+        $this->assertTrue($request->hasAny('city'));
+        $this->assertFalse($request->hasAny('foo'));
+        $this->assertTrue($request->hasAny('name', 'email'));
+        $this->assertTrue($request->hasAny(['name', 'email']));
+
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
+        $this->assertTrue($request->hasAny('name', 'email'));
+        $this->assertFalse($request->hasAny('surname', 'password'));
+        $this->assertFalse($request->hasAny(['surname', 'password']));
+
+        $request = Request::create('/', 'GET', ['foo' => ['bar' => null, 'baz' => '']]);
+        $this->assertTrue($request->hasAny('foo.bar'));
+        $this->assertTrue($request->hasAny('foo.baz'));
+        $this->assertFalse($request->hasAny('foo.bax'));
+        $this->assertTrue($request->hasAny(['foo.bax', 'foo.baz']));
+    }
+
+    public function testFilledMethod()
+    {
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => '', 'city' => null]);
+        $this->assertTrue($request->filled('name'));
+        $this->assertFalse($request->filled('age'));
+        $this->assertFalse($request->filled('city'));
+        $this->assertFalse($request->filled('foo'));
+        $this->assertFalse($request->filled('name', 'email'));
+
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
+        $this->assertTrue($request->filled('name'));
+        $this->assertTrue($request->filled('name', 'email'));
+
+        //test arrays within query string
+        $request = Request::create('/', 'GET', ['foo' => ['bar', 'baz']]);
+        $this->assertTrue($request->filled('foo'));
+
+        $request = Request::create('/', 'GET', ['foo' => ['bar' => 'baz']]);
+        $this->assertTrue($request->filled('foo.bar'));
     }
 
     public function testInputMethod()
@@ -236,19 +321,55 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('Taylor', $request['name']);
         $this->assertEquals('Bob', $request->input('foo', 'Bob'));
 
-        $request = Request::create('/', 'GET', [], [], ['file' => new Symfony\Component\HttpFoundation\File\UploadedFile(__FILE__, 'foo.php')]);
+        $request = Request::create('/', 'GET', [], [], ['file' => new \Symfony\Component\HttpFoundation\File\UploadedFile(__FILE__, 'foo.php')]);
         $this->assertInstanceOf('Symfony\Component\HttpFoundation\File\UploadedFile', $request['file']);
+    }
+
+    public function testAllMethod()
+    {
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => null]);
+        $this->assertEquals(['name' => 'Taylor', 'age' => null, 'email' => null], $request->all('name', 'age', 'email'));
+        $this->assertEquals(['name' => 'Taylor'], $request->all('name'));
+        $this->assertEquals(['name' => 'Taylor', 'age' => null], $request->all());
+
+        $request = Request::create('/', 'GET', ['developer' => ['name' => 'Taylor', 'age' => null]]);
+        $this->assertEquals(['developer' => ['name' => 'Taylor', 'skills' => null]], $request->all('developer.name', 'developer.skills'));
+        $this->assertEquals(['developer' => ['name' => 'Taylor', 'skills' => null]], $request->all(['developer.name', 'developer.skills']));
+        $this->assertEquals(['developer' => ['age' => null]], $request->all('developer.age'));
+        $this->assertEquals(['developer' => ['skills' => null]], $request->all('developer.skills'));
+        $this->assertEquals(['developer' => ['name' => 'Taylor', 'age' => null]], $request->all());
+    }
+
+    public function testKeysMethod()
+    {
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => null]);
+        $this->assertEquals(['name', 'age'], $request->keys());
+
+        $files = [
+            'foo' => [
+                'size' => 500,
+                'name' => 'foo.jpg',
+                'tmp_name' => __FILE__,
+                'type' => 'blah',
+                'error' => null,
+            ],
+        ];
+        $request = Request::create('/', 'GET', [], [], $files);
+        $this->assertEquals(['foo'], $request->keys());
+
+        $request = Request::create('/', 'GET', ['name' => 'Taylor'], [], $files);
+        $this->assertEquals(['name', 'foo'], $request->keys());
     }
 
     public function testOnlyMethod()
     {
-        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => 25]);
-        $this->assertEquals(['age' => 25], $request->only('age'));
-        $this->assertEquals(['name' => 'Taylor', 'age' => 25], $request->only('name', 'age'));
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => null]);
+        $this->assertEquals(['name' => 'Taylor', 'age' => null], $request->only('name', 'age', 'email'));
 
-        $request = Request::create('/', 'GET', ['developer' => ['name' => 'Taylor', 'age' => 25]]);
-        $this->assertEquals(['developer' => ['age' => 25]], $request->only('developer.age'));
-        $this->assertEquals(['developer' => ['name' => 'Taylor'], 'test' => null], $request->only('developer.name', 'test'));
+        $request = Request::create('/', 'GET', ['developer' => ['name' => 'Taylor', 'age' => null]]);
+        $this->assertEquals(['developer' => ['name' => 'Taylor']], $request->only('developer.name', 'developer.skills'));
+        $this->assertEquals(['developer' => ['age' => null]], $request->only('developer.age'));
+        $this->assertEquals([], $request->only('developer.skills'));
     }
 
     public function testExceptMethod()
@@ -258,18 +379,21 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertEquals([], $request->except('age', 'name'));
     }
 
-    public function testIntersectMethod()
-    {
-        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'age' => null]);
-        $this->assertEquals(['name' => 'Taylor'], $request->intersect('name', 'age', 'email'));
-    }
-
     public function testQueryMethod()
     {
         $request = Request::create('/', 'GET', ['name' => 'Taylor']);
         $this->assertEquals('Taylor', $request->query('name'));
         $this->assertEquals('Bob', $request->query('foo', 'Bob'));
         $all = $request->query(null);
+        $this->assertEquals('Taylor', $all['name']);
+    }
+
+    public function testPostMethod()
+    {
+        $request = Request::create('/', 'POST', ['name' => 'Taylor']);
+        $this->assertEquals('Taylor', $request->post('name'));
+        $this->assertEquals('Bob', $request->post('foo', 'Bob'));
+        $all = $request->post(null);
         $this->assertEquals('Taylor', $all['name']);
     }
 
@@ -478,7 +602,7 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $request = Request::create('/', 'GET');
         $session = m::mock('Illuminate\Session\Store');
         $session->shouldReceive('getOldInput')->once()->with('foo', 'bar')->andReturn('boom');
-        $request->setSession($session);
+        $request->setLaravelSession($session);
         $this->assertEquals('boom', $request->old('foo', 'bar'));
     }
 
@@ -487,8 +611,35 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $request = Request::create('/', 'GET');
         $session = m::mock('Illuminate\Session\Store');
         $session->shouldReceive('flashInput')->once();
-        $request->setSession($session);
+        $request->setLaravelSession($session);
         $request->flush();
+    }
+
+    public function testExpectsJson()
+    {
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $this->assertTrue($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => '*/*']);
+        $this->assertFalse($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => '*/*', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+        $this->assertTrue($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => null, 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+        $this->assertTrue($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => '*/*', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest', 'HTTP_X_PJAX' => 'true']);
+        $this->assertFalse($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'text/html']);
+        $this->assertFalse($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'text/html', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest']);
+        $this->assertFalse($request->expectsJson());
+
+        $request = Request::create('/', 'GET', [], [], [], ['HTTP_ACCEPT' => 'text/html', 'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest', 'HTTP_X_PJAX' => 'true']);
+        $this->assertFalse($request->expectsJson());
     }
 
     public function testFormatReturnsAcceptableFormat()
@@ -603,7 +754,8 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * @expectedException RuntimeException
+     * @expectedException \RuntimeException
+     * @expectedExceptionMessage Session store not set on request.
      */
     public function testSessionMethod()
     {
@@ -634,7 +786,8 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
     }
 
     /**
-     * @expectedException RuntimeException
+     * @expectedException \RuntimeException
+     * @expectedExceptionMessage Unable to generate fingerprint. Route unavailable.
      */
     public function testFingerprintWithoutRoute()
     {
@@ -677,8 +830,8 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
 
         // Parameter 'empty' is '', then it ISSET and is EMPTY.
         $this->assertEquals($request->empty, '');
-        $this->assertEquals(isset($request->empty), true);
-        $this->assertEquals(empty($request->empty), true);
+        $this->assertTrue(isset($request->empty));
+        $this->assertEmpty($request->empty);
 
         // Parameter 'undefined' is undefined/null, then it NOT ISSET and is EMPTY.
         $this->assertEquals($request->undefined, null);
@@ -686,7 +839,7 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertEquals(empty($request->undefined), true);
 
         // Simulates Route parameters.
-        $request = Request::create('/example/bar', 'GET', ['xyz' => 'overwrited']);
+        $request = Request::create('/example/bar', 'GET', ['xyz' => 'overwritten']);
         $request->setRouteResolver(function () use ($request) {
             $route = new Route('GET', '/example/{foo}/{xyz?}/{undefined?}', []);
             $route->bind($request);
@@ -695,7 +848,8 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         });
 
         // Router parameter 'foo' is 'bar', then it ISSET and is NOT EMPTY.
-        $this->assertEquals($request->foo, 'bar');
+        $this->assertEquals('bar', $request->foo);
+        $this->assertEquals('bar', $request['foo']);
         $this->assertEquals(isset($request->foo), true);
         $this->assertEquals(empty($request->foo), false);
 
@@ -704,9 +858,9 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $this->assertEquals(isset($request->undefined), false);
         $this->assertEquals(empty($request->undefined), true);
 
-        // Special case: router parameter 'xyz' is 'overwrited' by QueryString, then it ISSET and is NOT EMPTY.
+        // Special case: router parameter 'xyz' is 'overwritten' by QueryString, then it ISSET and is NOT EMPTY.
         // Basically, QueryStrings have priority over router parameters.
-        $this->assertEquals($request->xyz, 'overwrited');
+        $this->assertEquals($request->xyz, 'overwritten');
         $this->assertEquals(isset($request->foo), true);
         $this->assertEquals(empty($request->foo), false);
 
@@ -739,21 +893,25 @@ class HttpRequestTest extends PHPUnit_Framework_TestCase
         $session = m::mock('Illuminate\Session\Store');
         $session->shouldReceive('flashInput')->once()->with(['name' => 'Taylor', 'email' => 'foo']);
         $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
-        $request->setSession($session);
+        $request->setLaravelSession($session);
         $request->flash();
     }
 
     public function testHttpRequestFlashOnlyCallsFlashWithProperParameters()
     {
-        $request = m::mock('Illuminate\Http\Request[flash]');
-        $request->shouldReceive('flash')->once()->with('only', ['key1', 'key2']);
-        $request->flashOnly(['key1', 'key2']);
+        $session = m::mock('Illuminate\Session\Store');
+        $session->shouldReceive('flashInput')->once()->with(['name' => 'Taylor']);
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
+        $request->setLaravelSession($session);
+        $request->flashOnly(['name']);
     }
 
     public function testHttpRequestFlashExceptCallsFlashWithProperParameters()
     {
-        $request = m::mock('Illuminate\Http\Request[flash]');
-        $request->shouldReceive('flash')->once()->with('except', ['key1', 'key2']);
-        $request->flashExcept(['key1', 'key2']);
+        $session = m::mock('Illuminate\Session\Store');
+        $session->shouldReceive('flashInput')->once()->with(['name' => 'Taylor']);
+        $request = Request::create('/', 'GET', ['name' => 'Taylor', 'email' => 'foo']);
+        $request->setLaravelSession($session);
+        $request->flashExcept(['email']);
     }
 }

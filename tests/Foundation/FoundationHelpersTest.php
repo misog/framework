@@ -1,9 +1,12 @@
 <?php
 
+namespace Illuminate\Tests\Foundation;
+
 use Mockery as m;
+use PHPUnit\Framework\TestCase;
 use Illuminate\Foundation\Application;
 
-class FoundationHelpersTest extends PHPUnit_Framework_TestCase
+class FoundationHelpersTest extends TestCase
 {
     public function tearDown()
     {
@@ -13,10 +16,10 @@ class FoundationHelpersTest extends PHPUnit_Framework_TestCase
     public function testCache()
     {
         $app = new Application;
-        $app['cache'] = $cache = m::mock('StdClass');
+        $app['cache'] = $cache = m::mock('stdClass');
 
         // 1. cache()
-        $this->assertInstanceOf('StdClass', cache());
+        $this->assertInstanceOf('stdClass', cache());
 
         // 2. cache(['foo' => 'bar'], 1);
         $cache->shouldReceive('put')->once()->with('foo', 'bar', 1);
@@ -31,10 +34,12 @@ class FoundationHelpersTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('default', cache('baz', 'default'));
     }
 
+    /**
+     * @expectedException \Exception
+     * @expectedExceptionMessage You must specify an expiration time when setting a value in the cache.
+     */
     public function testCacheThrowsAnExceptionIfAnExpirationIsNotProvided()
     {
-        $this->setExpectedException('Exception');
-
         cache(['foo' => 'bar']);
     }
 
@@ -51,5 +56,26 @@ class FoundationHelpersTest extends PHPUnit_Framework_TestCase
         $this->assertEquals('/'.$file, elixir($file));
 
         unlink(public_path($file));
+    }
+
+    public function testMixDoesNotIncludeHost()
+    {
+        $file = 'unversioned.css';
+
+        app()->singleton('path.public', function () {
+            return __DIR__;
+        });
+
+        touch(public_path('mix-manifest.json'));
+
+        file_put_contents(public_path('mix-manifest.json'), json_encode([
+            '/unversioned.css' => '/versioned.css',
+        ]));
+
+        $result = mix($file);
+
+        $this->assertEquals('/versioned.css', $result);
+
+        unlink(public_path('mix-manifest.json'));
     }
 }

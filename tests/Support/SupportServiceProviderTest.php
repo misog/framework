@@ -1,12 +1,18 @@
 <?php
 
-use Illuminate\Support\ServiceProvider;
-use Mockery as m;
+namespace Illuminate\Tests\Support;
 
-class SupportServiceProviderTest extends PHPUnit_Framework_TestCase
+use Mockery as m;
+use PHPUnit\Framework\TestCase;
+use Illuminate\Support\ServiceProvider;
+
+class SupportServiceProviderTest extends TestCase
 {
     public function setUp()
     {
+        ServiceProvider::$publishes = [];
+        ServiceProvider::$publishGroups = [];
+
         $app = m::mock('Illuminate\\Foundation\\Application')->makePartial();
         $one = new ServiceProviderForTestingOne($app);
         $one->boot();
@@ -19,9 +25,25 @@ class SupportServiceProviderTest extends PHPUnit_Framework_TestCase
         m::close();
     }
 
+    public function testPublishableServiceProviders()
+    {
+        $toPublish = ServiceProvider::publishableProviders();
+        $expected = [
+            'Illuminate\Tests\Support\ServiceProviderForTestingOne',
+            'Illuminate\Tests\Support\ServiceProviderForTestingTwo',
+        ];
+        $this->assertEquals($expected, $toPublish, 'Publishable service providers do not return expected set of providers.');
+    }
+
+    public function testPublishableGroups()
+    {
+        $toPublish = ServiceProvider::publishableGroups();
+        $this->assertEquals(['some_tag'], $toPublish, 'Publishable groups do not return expected set of groups.');
+    }
+
     public function testSimpleAssetsArePublishedCorrectly()
     {
-        $toPublish = ServiceProvider::pathsToPublish('ServiceProviderForTestingOne');
+        $toPublish = ServiceProvider::pathsToPublish('Illuminate\Tests\Support\ServiceProviderForTestingOne');
         $this->assertArrayHasKey('source/unmarked/one', $toPublish, 'Service provider does not return expected published path key.');
         $this->assertArrayHasKey('source/tagged/one', $toPublish, 'Service provider does not return expected published path key.');
         $this->assertEquals(['source/unmarked/one' => 'destination/unmarked/one', 'source/tagged/one' => 'destination/tagged/one'], $toPublish, 'Service provider does not return expected set of published paths.');
@@ -29,7 +51,7 @@ class SupportServiceProviderTest extends PHPUnit_Framework_TestCase
 
     public function testMultipleAssetsArePublishedCorrectly()
     {
-        $toPublish = ServiceProvider::pathsToPublish('ServiceProviderForTestingTwo');
+        $toPublish = ServiceProvider::pathsToPublish('Illuminate\Tests\Support\ServiceProviderForTestingTwo');
         $this->assertArrayHasKey('source/unmarked/two/a', $toPublish, 'Service provider does not return expected published path key.');
         $this->assertArrayHasKey('source/unmarked/two/b', $toPublish, 'Service provider does not return expected published path key.');
         $this->assertArrayHasKey('source/unmarked/two/c', $toPublish, 'Service provider does not return expected published path key.');
@@ -47,7 +69,7 @@ class SupportServiceProviderTest extends PHPUnit_Framework_TestCase
 
     public function testSimpleTaggedAssetsArePublishedCorrectly()
     {
-        $toPublish = ServiceProvider::pathsToPublish('ServiceProviderForTestingOne', 'some_tag');
+        $toPublish = ServiceProvider::pathsToPublish('Illuminate\Tests\Support\ServiceProviderForTestingOne', 'some_tag');
         $this->assertArrayNotHasKey('source/tagged/two/a', $toPublish, 'Service provider does return unexpected tagged path key.');
         $this->assertArrayNotHasKey('source/tagged/two/b', $toPublish, 'Service provider does return unexpected tagged path key.');
         $this->assertArrayHasKey('source/tagged/one', $toPublish, 'Service provider does not return expected tagged path key.');
@@ -56,7 +78,7 @@ class SupportServiceProviderTest extends PHPUnit_Framework_TestCase
 
     public function testMultipleTaggedAssetsArePublishedCorrectly()
     {
-        $toPublish = ServiceProvider::pathsToPublish('ServiceProviderForTestingTwo', 'some_tag');
+        $toPublish = ServiceProvider::pathsToPublish('Illuminate\Tests\Support\ServiceProviderForTestingTwo', 'some_tag');
         $this->assertArrayHasKey('source/tagged/two/a', $toPublish, 'Service provider does not return expected tagged path key.');
         $this->assertArrayHasKey('source/tagged/two/b', $toPublish, 'Service provider does not return expected tagged path key.');
         $this->assertArrayNotHasKey('source/tagged/one', $toPublish, 'Service provider does return unexpected tagged path key.');
